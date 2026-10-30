@@ -1,7 +1,7 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="EquipmentDesk.Wpf/EquipmentDesk.Wpf.csproj" />
     <Project Path="src/EquipmentDesk.Core/EquipmentDesk.Core.csproj" />
+    <Project Path="src/EquipmentDesk.Wpf/EquipmentDesk.Wpf.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/EquipmentDesk.Tests/EquipmentDesk.Tests.csproj" />

@@ -1,4 +1,4 @@
-# WPF-Coursewor
+# 👨‍💻WPF-Coursewor
 
 ## Документация
 
