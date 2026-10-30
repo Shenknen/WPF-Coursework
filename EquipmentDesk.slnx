@@ -1,8 +1,9 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/EquipmentDesk.Core/EquipmentDesk.Core.csproj" />
+    <Project Path="../../../../../../source/repos/Shenknen/WPF-Coursework/EquipmentDesk.Wpf/EquipmentDesk.Wpf.csproj" Id="e36a13d6-d6b2-40c6-8891-ee231cb352ef" />
+    <Project Path="../../../../../../source/repos/Shenknen/WPF-Coursework/src/EquipmentDesk.Core/EquipmentDesk.Core.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/EquipmentDesk.Tests/EquipmentDesk.Tests.csproj" />
+    <Project Path="../../../../../../source/repos/Shenknen/WPF-Coursework/tests/EquipmentDesk.Tests/EquipmentDesk.Tests.csproj" />
   </Folder>
 </Solution>
