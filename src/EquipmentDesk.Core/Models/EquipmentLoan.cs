@@ -1,3 +1,5 @@
+using System.ComponentModel.DataAnnotations.Schema;
+
 namespace EquipmentDesk.Core.Models;
 
 public class EquipmentLoan
@@ -15,4 +17,7 @@ public class EquipmentLoan
     public DateTime? ReturnedAtUtc { get; set; } // null = выдача открыта
 
     public List<LoanEvent> Events { get; set; } = new();
+
+    [NotMapped]
+    public bool IsOverdue => ReturnedAtUtc is null && DateTime.UtcNow > DueAtUtc;
 }
