@@ -3,10 +3,38 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:local="clr-namespace:EquipmentDesk.Wpf"
         mc:Ignorable="d"
-        Title="MainWindow" Height="450" Width="800">
-    <Grid>
+        Title="КабинетУчёт"
+        Height="720" Width="1280"
+        MinHeight="720" MinWidth="1280"
+        WindowStartupLocation="CenterScreen">
+    <Grid Margin="24">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
 
+        <TextBlock Grid.Row="0"
+                   Text="КабинетУчёт"
+                   FontSize="28"
+                   FontWeight="SemiBold" />
+
+        <StackPanel Grid.Row="1" Margin="0,16,0,0">
+            <TextBlock Text="Файл базы данных:" FontWeight="SemiBold" />
+            <TextBlock Text="{Binding DatabasePath}"
+                       TextWrapping="Wrap"
+                       Margin="0,4,0,0" />
+
+            <TextBlock Text="{Binding Status}"
+                       TextWrapping="Wrap"
+                       Margin="0,12,0,0" />
+
+            <Button Content="Обновить"
+                    Command="{Binding RefreshCommand}"
+                    HorizontalAlignment="Left"
+                    Padding="16,6"
+                    Margin="0,12,0,0" />
+        </StackPanel>
     </Grid>
 </Window>

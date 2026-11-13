@@ -64,6 +64,90 @@ public class LoanService
         {
             return (false, "Конфликт: оборудование было выдано другим пользователем");
         }
+    }
 
+    public async Task<(bool Success, string? Error)> ExtendAsync(int loanId, DateTime newDueAtUtc)
+    {
+        var loan = await _db.Loans.FindAsync(loanId);
+        if(loan == null)
+            return(false, "Выдача не найдена");
+        
+        if(loan.ReturnedAtUtc != null)
+            return(false, "Нельзя продлить срок, оборудование уже вернули");
+        
+        if (newDueAtUtc <= DateTime.UtcNow)
+            return(false, "Новый срок должен быть позже текущего срока возврата");
+        
+        var oldDueAtUtc = loan.DueAtUtc;
+
+        loan.DueAtUtc = newDueAtUtc;
+
+        var loanEvent = new LoanEvent
+        {
+            LoanId = loanId,
+            EventType = LoanEventType.DueDateChanged,
+            OccurredAtUtc = DateTime.UtcNow,
+            OldDueAtUtc = oldDueAtUtc,
+            NewDueAtUtc = newDueAtUtc
+        };
+
+        _db.LoanEvents.Add(loanEvent);
+
+        await _db.SaveChangesAsync();
+
+        return(true, null);
+    }
+
+    public async Task<(bool Success, string? Error)> ReturnAsync(int loanId, bool isBroken, string comment)
+    {
+        var loan = await _db.Loans.FindAsync(loanId);
+        if(loan == null)
+            return(false, "Выдача не найдена");
+        
+        if(loan.ReturnedAtUtc != null)
+            return(false, "Эта выдача уже была закрыта ранее");
+        
+        loan.ReturnedAtUtc = DateTime.UtcNow;
+        loan.ReturnCondition = isBroken ? "Неисправен" : "Исправен";
+        loan.ReturnComment = comment;
+
+        var loanEvent = new LoanEvent
+        {
+            LoanId = loanId,
+            EventType = LoanEventType.Returned,
+            OccurredAtUtc = DateTime.UtcNow,
+            Comment = comment
+        };
+        _db.LoanEvents.Add(loanEvent);
+
+        var item = await _db.EquipmentItems.FindAsync(loan.EquipmentItemId);
+        if (item != null)
+        {
+            if (isBroken)
+            {
+                item.ServiceState = EquipmentServiceState.Maintenance;
+            }
+        }
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return(true,null);
+        }
+        catch(Exception ex)
+        {
+            return(false, "Ошибка при сохранении возврата: " + ex.Message);
+        }
+
+
+    }
+
+    public async Task<List<EquipmentLoan>> GetAllAsync()
+    {
+        return await _db.Loans
+        .Include(l => l.EquipmentItem)
+        .Include(l => l.Borrower)
+        .ToListAsync();
+        
     }
 }

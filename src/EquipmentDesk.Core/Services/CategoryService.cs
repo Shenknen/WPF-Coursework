@@ -16,15 +16,24 @@ public class CategoryService
         if (string.IsNullOrWhiteSpace(name))
             return (false, "Название не может быть пустым");
 
-        var exists = await _db.Categories.AnyAsync(c => c.Name.ToLower() == name.Trim().ToLower());
-        
-        if(exists)
-            return(false, "Такая категория уже существует");
+        var normalized = Category.Normalize(name);
 
-        var category = new Category { Name = name.Trim() };
+        if (await _db.Categories.AnyAsync(c => c.NormalizedName == normalized))
+            return(false, "Название категории не может быть пустым");
+
+        var category = new Category();
+        category.Rename(name);
+
         _db.Categories.Add(category);
-        await _db.SaveChangesAsync();
 
-        return(true, null);
+        try
+        {
+            await _db.SaveChangesAsync();
+            return (true, null);
+        }
+        catch(DbUpdateException)
+        {
+            return(false, "Такая категория уже существует");
+        }
     }
 }

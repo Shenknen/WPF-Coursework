@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 namespace EquipmentDesk.Core.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20261030153527_InitialCreate")]
+    [Migration("20261111023815_InitialCreate")]
     partial class InitialCreate
     {
         /// <inheritdoc />
@@ -54,9 +54,18 @@ namespace EquipmentDesk.Core.Migrations
 
                     b.Property<string>("Name")
                         .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("NormalizedName")
+                        .IsRequired()
+                        .HasMaxLength(100)
                         .HasColumnType("TEXT");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("NormalizedName")
+                        .IsUnique();
 
                     b.ToTable("Categories");
                 });
@@ -81,8 +90,10 @@ namespace EquipmentDesk.Core.Migrations
                     b.Property<string>("SerialNumber")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("ServiceState")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("ServiceState")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<string>("StorageLocation")
                         .IsRequired()
@@ -113,7 +124,16 @@ namespace EquipmentDesk.Core.Migrations
                     b.Property<int>("EquipmentItemId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("IssueComment")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime>("IssuedAtUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReturnComment")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("ReturnCondition")
                         .HasColumnType("TEXT");
 
                     b.Property<DateTime?>("ReturnedAtUtc")
@@ -139,8 +159,10 @@ namespace EquipmentDesk.Core.Migrations
                     b.Property<string>("Comment")
                         .HasColumnType("TEXT");
 
-                    b.Property<int>("EventType")
-                        .HasColumnType("INTEGER");
+                    b.Property<string>("EventType")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
 
                     b.Property<int>("LoanId")
                         .HasColumnType("INTEGER");
@@ -164,7 +186,7 @@ namespace EquipmentDesk.Core.Migrations
             modelBuilder.Entity("EquipmentDesk.Core.Models.EquipmentItem", b =>
                 {
                     b.HasOne("EquipmentDesk.Core.Models.Category", "Category")
-                        .WithMany()
+                        .WithMany("Items")
                         .HasForeignKey("CategoryId")
                         .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired();
@@ -200,6 +222,11 @@ namespace EquipmentDesk.Core.Migrations
                         .IsRequired();
 
                     b.Navigation("Loan");
+                });
+
+            modelBuilder.Entity("EquipmentDesk.Core.Models.Category", b =>
+                {
+                    b.Navigation("Items");
                 });
 
             modelBuilder.Entity("EquipmentDesk.Core.Models.EquipmentLoan", b =>

@@ -33,7 +33,8 @@ namespace EquipmentDesk.Core.Migrations
                 {
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
-                    Name = table.Column<string>(type: "TEXT", nullable: false)
+                    Name = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false),
+                    NormalizedName = table.Column<string>(type: "TEXT", maxLength: 100, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -51,7 +52,7 @@ namespace EquipmentDesk.Core.Migrations
                     Name = table.Column<string>(type: "TEXT", nullable: false),
                     SerialNumber = table.Column<string>(type: "TEXT", nullable: true),
                     StorageLocation = table.Column<string>(type: "TEXT", nullable: false),
-                    ServiceState = table.Column<int>(type: "INTEGER", nullable: false)
+                    ServiceState = table.Column<string>(type: "TEXT", maxLength: 20, nullable: false)
                 },
                 constraints: table =>
                 {
@@ -72,6 +73,9 @@ namespace EquipmentDesk.Core.Migrations
                         .Annotation("Sqlite:Autoincrement", true),
                     EquipmentItemId = table.Column<int>(type: "INTEGER", nullable: false),
                     BorrowerId = table.Column<int>(type: "INTEGER", nullable: false),
+                    ReturnCondition = table.Column<string>(type: "TEXT", nullable: true),
+                    ReturnComment = table.Column<string>(type: "TEXT", nullable: true),
+                    IssueComment = table.Column<string>(type: "TEXT", nullable: true),
                     IssuedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     DueAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     ReturnedAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true)
@@ -100,7 +104,7 @@ namespace EquipmentDesk.Core.Migrations
                     Id = table.Column<int>(type: "INTEGER", nullable: false)
                         .Annotation("Sqlite:Autoincrement", true),
                     LoanId = table.Column<int>(type: "INTEGER", nullable: false),
-                    EventType = table.Column<int>(type: "INTEGER", nullable: false),
+                    EventType = table.Column<string>(type: "TEXT", maxLength: 20, nullable: false),
                     OccurredAtUtc = table.Column<DateTime>(type: "TEXT", nullable: false),
                     OldDueAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
                     NewDueAtUtc = table.Column<DateTime>(type: "TEXT", nullable: true),
@@ -116,6 +120,12 @@ namespace EquipmentDesk.Core.Migrations
                         principalColumn: "Id",
                         onDelete: ReferentialAction.Cascade);
                 });
+
+            migrationBuilder.CreateIndex(
+                name: "IX_Categories_NormalizedName",
+                table: "Categories",
+                column: "NormalizedName",
+                unique: true);
 
             migrationBuilder.CreateIndex(
                 name: "IX_EquipmentItems_CategoryId",

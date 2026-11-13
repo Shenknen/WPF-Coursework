@@ -12,6 +12,11 @@ public class EquipmentLoan
     public int BorrowerId { get; set; }
     public Borrower Borrower { get; set; } = null!;
 
+    public string? ReturnCondition { get; set; }
+    public string? ReturnComment { get; set; }
+
+
+    public string? IssueComment { get; set; }
     public DateTime IssuedAtUtc { get; set; }
     public DateTime DueAtUtc { get; set; }
     public DateTime? ReturnedAtUtc { get; set; } // null = выдача открыта
