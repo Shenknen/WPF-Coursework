@@ -19,7 +19,7 @@ public class CategoryService
         var normalized = Category.Normalize(name);
 
         if (await _db.Categories.AnyAsync(c => c.NormalizedName == normalized))
-            return(false, "Название категории не может быть пустым");
+            return(false, "Такая категория уже существует");
 
         var category = new Category();
         category.Rename(name);
@@ -30,6 +30,35 @@ public class CategoryService
         {
             await _db.SaveChangesAsync();
             return (true, null);
+        }
+        catch(DbUpdateException)
+        {
+            return(false, "Такая категория уже существует");
+        }
+    }
+
+    public async Task <(bool Success, string? Error)> RenameAsync(int id, string newName){
+        if (string.IsNullOrWhiteSpace(newName))
+            return(false, "Название не может быть пустым");
+        
+        var category = await _db.Categories.FindAsync(id);
+        if (category == null)
+            return(false, "Категория не найдена");
+
+        var normalized = Category.Normalize(newName);
+
+        var exists = await _db.Categories
+            .AnyAsync(c => c.Id != id && c.NormalizedName == normalized);
+
+        if(exists)
+            return(false, "Такая категория уже существует");
+
+        category.Rename(newName);
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return(true, null);
         }
         catch(DbUpdateException)
         {

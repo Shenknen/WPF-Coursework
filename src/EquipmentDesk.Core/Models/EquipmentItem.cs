@@ -13,4 +13,8 @@ public class EquipmentItem
 
     public EquipmentServiceState ServiceState { get; set; } = EquipmentServiceState.Operational;
 
+    public static string NormalizeInventoryNumber(string value) =>
+        string.Join(' ', value.Split(
+            (char[]?)null,
+            StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
 }
