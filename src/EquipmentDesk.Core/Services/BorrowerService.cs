@@ -70,6 +70,7 @@ public class BorrowerService
         }
         catch(DbUpdateException)
         {
+            _db.ChangeTracker.Clear();
             return(false, "Не удалось изменить получателя");
         }
     }
@@ -85,11 +86,11 @@ public class BorrowerService
         try
         {
             await _db.SaveChangesAsync();
-            return(false, null);    
+            return(true, null);    
         }
         catch(DbUpdateException)
         {
-            return(false, "Не удалось активировать/деактивировать выдачу");
+            return(false, "Не удалось измениить статус получатееля");
         }     
     }
 

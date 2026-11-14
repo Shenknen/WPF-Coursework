@@ -1,3 +1,4 @@
+using System.Runtime.ExceptionServices;
 using EquipmentDesk.Core.Data;
 using EquipmentDesk.Core.Models;
 using Microsoft.EntityFrameworkCore;
@@ -28,7 +29,7 @@ public class EquipmentService
             return(false, "Инвентарный номер не может быть пустым");
         
         if (string.IsNullOrWhiteSpace(item.StorageLocation))
-            return(false, "Место хранения не может быть пустым")
+            return(false, "Место хранения не может быть пустым");
 
         var categoryExists = await _db.Categories.AnyAsync(c => c.Id == item.CategoryId);
         if (!categoryExists)
@@ -50,7 +51,55 @@ public class EquipmentService
         }
         catch (DbUpdateException)
         {
-            return(false, $"Оборудование с номером '{item.InventoryNumber}' уже существует")
+            _db.Entry(item).State = EntityState.Detached;
+            return(false, $"Оборудование с номером '{item.InventoryNumber}' уже существует");
+        }
+    }
+
+    public async Task<(bool Success, string? Error)> UpdateAsync(int id, int categoryId, string inventoryNumber, string name, string? serialNumber, string storageLocation)
+    {
+        inventoryNumber = EquipmentItem.NormalizeInventoryNumber(inventoryNumber);
+        name = name?.Trim()  ?? string.Empty;
+        storageLocation = storageLocation?.Trim() ?? string.Empty;
+        serialNumber = string.IsNullOrWhiteSpace(serialNumber)
+            ? null 
+            : serialNumber.Trim();
+        
+        if (string.IsNullOrWhiteSpace(name))
+            return(false, "Категория не может быть пустой");
+        
+        if (string.IsNullOrWhiteSpace(inventoryNumber))
+            return(false, "Инвентарный номер не может быть пустым");
+
+        if (string.IsNullOrWhiteSpace(storageLocation))
+            return(false, "Место хранения не может быть пустым");
+
+        var categoryExists = await _db.Categories.AnyAsync(c => c.Id == categoryId);
+        if (!categoryExists)
+            return(false, "Выбранная категория не найдена");
+
+        var item = await _db.EquipmentItems.FindAsync(id);
+        if (item == null)
+            return(false, "Оборудование не найдено");
+        
+        var duplicate = await _db.EquipmentItems
+            .AnyAsync(e => e.Id != id && e.InventoryNumber == inventoryNumber);
+        
+        item.CategoryId = categoryId;
+        item.InventoryNumber = inventoryNumber;
+        item.Name = name;
+        item.SerialNumber = serialNumber;
+        item.StorageLocation = storageLocation;
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return(true, null);
+        }
+        catch
+        {
+            _db.ChangeTracker.Clear();
+            return(false, $"Оборудование с номером '{inventoryNumber}' уже существует");
         }
     }
 }
