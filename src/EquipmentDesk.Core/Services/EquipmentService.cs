@@ -1,3 +1,4 @@
+using System.Reflection.Metadata;
 using System.Runtime.ExceptionServices;
 using EquipmentDesk.Core.Data;
 using EquipmentDesk.Core.Models;
@@ -101,5 +102,40 @@ public class EquipmentService
             _db.ChangeTracker.Clear();
             return(false, $"Оборудование с номером '{inventoryNumber}' уже существует");
         }
+    }
+
+    public async Task<(bool Success, string? Error)> ChangeStateAsync(int id, EquipmentServiceState newState)
+    {
+        var item = await _db.EquipmentItems.FindAsync(id);
+        if (item == null)
+            return(false, "Оборудование не найдено");
+            
+        if(item.ServiceState == newState)
+            return(true, null);
+        
+        if (item.ServiceState == EquipmentServiceState.Retired)
+            return(false, "Списанное оборудование нельзя вернуть");
+        
+        var hasOpenLoan = await _db.Loans.AnyAsync(
+            l => l.EquipmentItemId == id && l.ReturnedAtUtc == null);
+        
+        if (hasOpenLoan)
+            return(false, "Нельзя изменить состояние выбранного оборудования. Сначала оформите возврат");
+
+        if (!Enum.IsDefined(newState))
+            return(false, "Неизвестное состояние оборудования");
+
+        item.ServiceState = newState;
+
+        try
+        {
+            await _db.SaveChangesAsync();
+            return(true, null);
+        }
+        catch (DbUpdateException)
+        {
+            _db.ChangeTracker.Clear();
+            return(false, "Не удалось сохранить изменения оборудования");
+        }            
     }
 }

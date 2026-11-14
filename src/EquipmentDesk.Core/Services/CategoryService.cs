@@ -65,4 +65,13 @@ public class CategoryService
             return(false, "Такая категория уже существует");
         }
     }
+
+    public async Task<List<Category>> GetAllAsync()
+    {
+        return await _db.Categories
+            .AsNoTracking()
+            .OrderBy(c => c.Name)
+            .ThenBy(c => c.Id)
+            .ToListAsync();
+    }
 }
