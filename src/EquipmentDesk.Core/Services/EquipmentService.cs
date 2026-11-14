@@ -1,9 +1,6 @@
-using System.Reflection.Metadata;
-using System.Runtime.ExceptionServices;
 using EquipmentDesk.Core.Data;
 using EquipmentDesk.Core.Models;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Storage;
 
 namespace EquipmentDesk.Core.Services;
 
@@ -14,21 +11,24 @@ public class EquipmentService
     public EquipmentService(AppDbContext db) { _db = db; }
 
     public async Task<(bool Success, string? Error)> AddAsync(EquipmentItem item)
-    {
-        item.Name = item.Name.Trim();
-        item.InventoryNumber = EquipmentItem.NormalizeInventoryNumber(item.InventoryNumber);
-        item.StorageLocation = item.StorageLocation.Trim();
+    {//блок валидации
+
+        item.Name = item.Name?.Trim() ?? string.Empty;
+        item.InventoryNumber = EquipmentItem.NormalizeInventoryNumber(item.InventoryNumber ?? string.Empty);
+        item.StorageLocation = item.StorageLocation?.Trim() ?? string.Empty;
+        
+
         item.SerialNumber = string.IsNullOrWhiteSpace(item.SerialNumber) 
             ? null 
             : item.SerialNumber.Trim();
 
-        //блок валидации
+        
         if (string.IsNullOrWhiteSpace(item.Name))
             return(false, "Название оборудования не может быть пустым");
 
         if (string.IsNullOrWhiteSpace(item.InventoryNumber))
             return(false, "Инвентарный номер не может быть пустым");
-        
+
         if (string.IsNullOrWhiteSpace(item.StorageLocation))
             return(false, "Место хранения не может быть пустым");
 
@@ -59,7 +59,7 @@ public class EquipmentService
 
     public async Task<(bool Success, string? Error)> UpdateAsync(int id, int categoryId, string inventoryNumber, string name, string? serialNumber, string storageLocation)
     {
-        inventoryNumber = EquipmentItem.NormalizeInventoryNumber(inventoryNumber);
+        inventoryNumber = EquipmentItem.NormalizeInventoryNumber(inventoryNumber ?? string.Empty);
         name = name?.Trim()  ?? string.Empty;
         storageLocation = storageLocation?.Trim() ?? string.Empty;
         serialNumber = string.IsNullOrWhiteSpace(serialNumber)
@@ -67,7 +67,7 @@ public class EquipmentService
             : serialNumber.Trim();
         
         if (string.IsNullOrWhiteSpace(name))
-            return(false, "Категория не может быть пустой");
+            return(false, "Название оборудования не может быть пустым");
         
         if (string.IsNullOrWhiteSpace(inventoryNumber))
             return(false, "Инвентарный номер не может быть пустым");
@@ -85,6 +85,9 @@ public class EquipmentService
         
         var duplicate = await _db.EquipmentItems
             .AnyAsync(e => e.Id != id && e.InventoryNumber == inventoryNumber);
+
+        if(duplicate)
+            return(false, $"Оборудование с номером '{inventoryNumber}' уже существует");
         
         item.CategoryId = categoryId;
         item.InventoryNumber = inventoryNumber;
@@ -97,7 +100,7 @@ public class EquipmentService
             await _db.SaveChangesAsync();
             return(true, null);
         }
-        catch
+        catch(DbUpdateException)
         {
             _db.ChangeTracker.Clear();
             return(false, $"Оборудование с номером '{inventoryNumber}' уже существует");
@@ -106,6 +109,9 @@ public class EquipmentService
 
     public async Task<(bool Success, string? Error)> ChangeStateAsync(int id, EquipmentServiceState newState)
     {
+        if (!Enum.IsDefined(newState))
+            return(false, "Неизвестное состояние оборудования");
+        
         var item = await _db.EquipmentItems.FindAsync(id);
         if (item == null)
             return(false, "Оборудование не найдено");
@@ -114,16 +120,13 @@ public class EquipmentService
             return(true, null);
         
         if (item.ServiceState == EquipmentServiceState.Retired)
-            return(false, "Списанное оборудование нельзя вернуть");
+            return(false, "Списанное оборудование нельзя изменить");
         
         var hasOpenLoan = await _db.Loans.AnyAsync(
             l => l.EquipmentItemId == id && l.ReturnedAtUtc == null);
         
         if (hasOpenLoan)
             return(false, "Нельзя изменить состояние выбранного оборудования. Сначала оформите возврат");
-
-        if (!Enum.IsDefined(newState))
-            return(false, "Неизвестное состояние оборудования");
 
         item.ServiceState = newState;
 
@@ -137,5 +140,15 @@ public class EquipmentService
             _db.ChangeTracker.Clear();
             return(false, "Не удалось сохранить изменения оборудования");
         }            
+    }
+
+    public async Task<List<EquipmentItem>> GetAllAsync()
+    {
+        return await _db.EquipmentItems
+            .AsNoTracking()
+            .Include(e => e.Category)
+            .OrderBy(e => e.InventoryNumber)
+            .ThenBy(e => e.Id)
+            .ToListAsync();
     }
 }
