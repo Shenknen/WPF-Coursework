@@ -163,17 +163,38 @@ public class LoanService
             return(false, "Не удалось сохранить возврат");
         }
     }
+    private static IQueryable<EquipmentLoan> LoansWithDetails(AppDbContext db)
+        {
+            return db.Loans
+                .AsNoTracking()
+                .Include(l => l.EquipmentItem)
+                .Include(l => l.Borrower);
+    }
 
     public async Task<List<EquipmentLoan>> GetAllAsync()
     {
-        return await _db.Loans
-        .AsNoTracking()
-        .Include(l => l.EquipmentItem)
-        .Include(l => l.Borrower)
+        return await LoansWithDetails(_db)
         .OrderBy(l => l.ReturnedAtUtc != null)
         .ThenBy(l => l.DueAtUtc)
         .ThenBy(l => l.Id)
-        .ToListAsync();
-        
+        .ToListAsync();   
+    }
+
+   public async Task<List<EquipmentLoan>> GetOpenAsync()
+    {
+        return await LoansWithDetails(_db)
+            .Where(l => l.ReturnedAtUtc == null)
+            .OrderBy(l => l.DueAtUtc)
+            .ThenBy(l => l.Id)
+            .ToListAsync();
+    }
+
+    public async Task<List<EquipmentLoan>> GetCloseAsync()
+    {
+        return await LoansWithDetails(_db)
+            .Where(l => l.ReturnedAtUtc != null)
+            .OrderBy(l => l.DueAtUtc)
+            .ThenBy(l => l.Id)
+            .ToListAsync();
     }
 }
