@@ -411,4 +411,367 @@ public class LoanServiceTests : IAsyncLifetime
         Assert.Single(history[0].Events);
         Assert.All(history, l => Assert.NotEqual(otherLoan.Id, l.Id));
     }
+
+    [Fact]
+    public async Task IssueAsync_WhenItemIsFree_CreatesLoanAndIssuedEvent()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var dueAtUtc = DateTime.UtcNow.AddDays(1);
+
+        var result = await _service.IssueAsync(
+            item.Id,
+            borrower.Id,
+            dueAtUtc,
+            "  выдать студенту  ");
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        var loan = await _db.Loans.SingleAsync();
+        Assert.Equal(item.Id, loan.EquipmentItemId);
+        Assert.Equal(borrower.Id, loan.BorrowerId);
+        Assert.Equal(dueAtUtc, loan.DueAtUtc);
+        Assert.Null(loan.ReturnedAtUtc);
+        Assert.Equal("выдать студенту", loan.IssueComment);
+
+        var loanEvent = await _db.LoanEvents.SingleAsync();
+        Assert.Equal(LoanEventType.Issued, loanEvent.EventType);
+        Assert.Equal(loan.Id, loanEvent.LoanId);
+        Assert.Equal("выдать студенту", loanEvent.Comment);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenItemAlreadyIssued_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var existing = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            now.AddDays(5));
+
+        var result = await _service.IssueAsync(
+            item.Id,
+            borrower.Id,
+            now.AddDays(2));
+
+        Assert.False(result.Success);
+        Assert.Equal("Оборудование уже выдано", result.Error);
+        Assert.Equal(1, await _db.Loans.CountAsync());
+        Assert.Equal(0, await _db.LoanEvents.CountAsync());
+        Assert.Null(existing.ReturnedAtUtc);
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenBorrowerInactive_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync(isActive: false);
+
+        var result = await _service.IssueAsync(
+            item.Id,
+            borrower.Id,
+            DateTime.UtcNow.AddDays(1));
+
+        Assert.False(result.Success);
+        Assert.Equal("Получатель не активен", result.Error);
+        Assert.Empty(await _db.Loans.ToListAsync());
+        Assert.Empty(await _db.LoanEvents.ToListAsync());
+    }
+
+    [Theory]
+    [InlineData(EquipmentServiceState.Maintenance)]
+    [InlineData(EquipmentServiceState.Retired)]
+    public async Task IssueAsync_WhenItemNotOperational_ReturnsError(EquipmentServiceState state)
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01", state);
+        var borrower = await AddBorrowerAsync();
+
+        var result = await _service.IssueAsync(
+            item.Id,
+            borrower.Id,
+            DateTime.UtcNow.AddDays(1));
+
+        Assert.False(result.Success);
+        Assert.Equal("Оборудование неисправно или списано", result.Error);
+        Assert.Empty(await _db.Loans.ToListAsync());
+        Assert.Empty(await _db.LoanEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task IssueAsync_WhenDueInPast_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var result = await _service.IssueAsync(
+            item.Id,
+            borrower.Id,
+            DateTime.UtcNow.AddMinutes(-1));
+
+        Assert.False(result.Success);
+        Assert.Equal("Срок возврата должен быть в будущем", result.Error);
+        Assert.Empty(await _db.Loans.ToListAsync());
+        Assert.Empty(await _db.LoanEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ReturnAsync_WhenHealthy_ClosesLoanAndAddsEvent()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            now.AddDays(5));
+
+        var result = await _service.ReturnAsync(loan.Id, false, "  всё хорошо  ");
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        var savedItem = await _db.EquipmentItems.SingleAsync(i => i.Id == item.Id);
+        var returnedEvent = await _db.LoanEvents.SingleAsync(e => e.LoanId == loan.Id);
+
+        Assert.NotNull(savedLoan.ReturnedAtUtc);
+        Assert.Equal("Исправен", savedLoan.ReturnCondition);
+        Assert.Equal("всё хорошо", savedLoan.ReturnComment);
+        Assert.Equal(EquipmentServiceState.Operational, savedItem.ServiceState);
+        Assert.Equal(LoanEventType.Returned, returnedEvent.EventType);
+        Assert.Equal("всё хорошо", returnedEvent.Comment);
+    }
+
+    [Fact]
+    public async Task ReturnAsync_WhenBrokenWithoutComment_ReturnsErrorAndKeepsLoanOpen()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            now.AddDays(5));
+
+        var result = await _service.ReturnAsync(loan.Id, true, "   ");
+
+        Assert.False(result.Success);
+        Assert.Equal("Опишите неисправность", result.Error);
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        var savedItem = await _db.EquipmentItems.SingleAsync(i => i.Id == item.Id);
+
+        Assert.Null(savedLoan.ReturnedAtUtc);
+        Assert.Null(savedLoan.ReturnCondition);
+        Assert.Equal(EquipmentServiceState.Operational, savedItem.ServiceState);
+        Assert.Empty(await _db.LoanEvents.ToListAsync());
+    }
+
+    [Fact]
+    public async Task ReturnAsync_WhenBrokenWithComment_SetsMaintenance()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            now.AddDays(5));
+
+        var result = await _service.ReturnAsync(loan.Id, true, "  сломан разъём  ");
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        var savedItem = await _db.EquipmentItems.SingleAsync(i => i.Id == item.Id);
+        var returnedEvent = await _db.LoanEvents.SingleAsync(e => e.LoanId == loan.Id);
+
+        Assert.NotNull(savedLoan.ReturnedAtUtc);
+        Assert.Equal("Неисправен", savedLoan.ReturnCondition);
+        Assert.Equal("сломан разъём", savedLoan.ReturnComment);
+        Assert.Equal(EquipmentServiceState.Maintenance, savedItem.ServiceState);
+        Assert.Equal(LoanEventType.Returned, returnedEvent.EventType);
+        Assert.Equal("сломан разъём", returnedEvent.Comment);
+    }
+
+    [Fact]
+    public async Task ReturnAsync_WhenAlreadyClosed_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-10),
+            now.AddDays(-5),
+            now.AddDays(-4));
+
+        var result = await _service.ReturnAsync(loan.Id, false, "повторно");
+
+        Assert.False(result.Success);
+        Assert.Equal("Эта выдача уже была закрыта ранее", result.Error);
+        Assert.Equal(0, await _db.LoanEvents.CountAsync());
+    }
+
+    [Fact]
+    public async Task ExtendAsync_WhenOpen_ChangesDueAndAddsEvent()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var oldDueAtUtc = now.AddDays(3);
+        var newDueAtUtc = now.AddDays(10);
+
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            oldDueAtUtc);
+
+        var result = await _service.ExtendAsync(loan.Id, newDueAtUtc);
+
+        Assert.True(result.Success);
+        Assert.Null(result.Error);
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        var changedEvent = await _db.LoanEvents.SingleAsync(e => e.LoanId == loan.Id);
+
+        Assert.Equal(newDueAtUtc, savedLoan.DueAtUtc);
+        Assert.Equal(LoanEventType.DueDateChanged, changedEvent.EventType);
+        Assert.Equal(oldDueAtUtc, changedEvent.OldDueAtUtc);
+        Assert.Equal(newDueAtUtc, changedEvent.NewDueAtUtc);
+    }
+
+    [Fact]
+    public async Task ExtendAsync_WhenClosed_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-10),
+            now.AddDays(-5),
+            now.AddDays(-4));
+
+        var result = await _service.ExtendAsync(loan.Id, now.AddDays(10));
+
+        Assert.False(result.Success);
+        Assert.Equal("Нельзя продлить срок, оборудование уже вернули", result.Error);
+        Assert.Equal(0, await _db.LoanEvents.CountAsync());
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        Assert.Equal(now.AddDays(-5), savedLoan.DueAtUtc);
+    }
+
+    [Fact]
+    public async Task ExtendAsync_WhenNewDueNotLater_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var oldDueAtUtc = now.AddDays(5);
+
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            oldDueAtUtc);
+
+        var result = await _service.ExtendAsync(loan.Id, now.AddDays(2));
+
+        Assert.False(result.Success);
+        Assert.Equal("Новый срок должен быть позже текущего срока возврата", result.Error);
+        Assert.Equal(0, await _db.LoanEvents.CountAsync());
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        Assert.Equal(oldDueAtUtc, savedLoan.DueAtUtc);
+    }
+
+    [Fact]
+    public async Task ExtendAsync_WhenNewDueInPast_ReturnsError()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+        var oldDueAtUtc = now.AddDays(5);
+
+        var loan = await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            oldDueAtUtc);
+
+        var result = await _service.ExtendAsync(loan.Id, now.AddMinutes(-1));
+
+        Assert.False(result.Success);
+        Assert.Equal("Новый срок должен быть в будущем", result.Error);
+        Assert.Equal(0, await _db.LoanEvents.CountAsync());
+
+        _db.ChangeTracker.Clear();
+
+        var savedLoan = await _db.Loans.SingleAsync(l => l.Id == loan.Id);
+        Assert.Equal(oldDueAtUtc, savedLoan.DueAtUtc);
+    }
+
+    [Fact]
+    public async Task Database_RejectsSecondOpenLoanForSameItem()
+    {
+        var category = await AddCategoryAsync();
+        var item = await AddItemAsync(category, "TEST-01");
+        var borrower = await AddBorrowerAsync();
+
+        var now = DateTime.UtcNow;
+
+        await AddLoanAsync(
+            item, borrower,
+            now.AddDays(-1),
+            now.AddDays(5));
+
+        _db.Loans.Add(new EquipmentLoan
+        {
+            EquipmentItemId = item.Id,
+            BorrowerId = borrower.Id,
+            IssuedAtUtc = now,
+            DueAtUtc = now.AddDays(6)
+        });
+
+        await Assert.ThrowsAsync<DbUpdateException>(() => _db.SaveChangesAsync());
+    }
 }
