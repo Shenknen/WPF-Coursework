@@ -189,12 +189,78 @@ public class LoanService
             .ToListAsync();
     }
 
-    public async Task<List<EquipmentLoan>> GetCloseAsync()
+    public async Task<List<EquipmentLoan>> GetClosedAsync()
     {
         return await LoansWithDetails(_db)
             .Where(l => l.ReturnedAtUtc != null)
             .OrderBy(l => l.DueAtUtc)
             .ThenBy(l => l.Id)
             .ToListAsync();
+    }
+
+    public async Task<List<EquipmentLoan>> GetOverdueAsync()
+    {
+        var now = DateTime.UtcNow;
+
+        return await LoansWithDetails(_db)
+            .Where(l => l.ReturnedAtUtc == null && l.DueAtUtc < now)
+            .OrderBy(l => l.DueAtUtc)
+            .ThenBy(l => l.Id)
+            .ToListAsync();
+    }
+
+    public async Task<(int Open, int Closed, int Overdue)> GetCountsAsync()
+    {
+        var now = DateTime.UtcNow;
+
+        var open = await _db.Loans.CountAsync(l => l.ReturnedAtUtc == null);
+        var closed = await _db.Loans.CountAsync(l => l.ReturnedAtUtc != null);
+        var overdue = await _db.Loans.CountAsync(l => l.ReturnedAtUtc == null && l.DueAtUtc < now);
+
+        return (open, closed, overdue);
+    }
+
+    public async Task<EquipmentLoan?> GetCurrentByItemAsync(int equipmentItemId)
+    {
+        return await _db.Loans
+            .AsNoTracking()
+            .Include(l => l.Borrower)
+            .Include(l => l.EquipmentItem)
+            .FirstOrDefaultAsync(l => 
+                l.EquipmentItemId == equipmentItemId &&
+                l.ReturnedAtUtc == null);
+    }
+
+    public async Task<List<LoanEvent>> GetEventsAsync(int loanId)
+    {
+        return await _db.LoanEvents
+            .AsNoTracking()
+            .Where(e => e.LoanId == loanId)
+            .OrderByDescending(e => e.OccurredAtUtc)
+            .ThenByDescending(e => e.Id)
+            .ToListAsync();
+    }
+
+    public async Task<List<EquipmentLoan>> GetHistoryByItemAsync(int equipmentItemId)
+    {
+        var loans = await _db.Loans
+            .AsNoTracking()
+            .Include(l => l.Borrower)
+            .Include(l => l.Events)
+            .Where(l => l.EquipmentItemId == equipmentItemId)
+            .OrderByDescending(l => l.IssuedAtUtc)
+            .ThenByDescending(l => l.Id)
+            .AsSplitQuery()
+            .ToListAsync();
+        
+        foreach (var loan in loans)
+        {
+            loan.Events = loan.Events
+                .OrderByDescending(e => e.OccurredAtUtc)
+                .ThenByDescending(e => e.Id)
+                .ToList();
+        }
+
+        return loans;
     }
 }
